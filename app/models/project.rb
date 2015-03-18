@@ -3,23 +3,18 @@ class Project < ActiveRecord::Base
   after_destroy :deletefiles
 
   belongs_to :user
-  has_many :project_followers,
-              dependent: :destroy,
-              foreign_key: "project_id"
-  has_many :followers,
-              through: :project_followers,
-              class_name: "User",
-              foreign_key: "follower_id"
+  has_many :project_followers, dependent: :destroy,
+                               foreign_key: 'project_id'
+  has_many :followers, through: :project_followers,
+                       class_name: 'User',
+                       foreign_key: 'follower_id'
   has_many :issues
 
-  validates :name,
-              presence: true,
-              uniqueness: { scope: :user }
-  validates :user,
-              presence: true
+  validates :name, presence: true, uniqueness: { scope: :user }
+  validates :user, presence: true
 
   # Returns a list of public projects that belong to other users.
-  def self.inspiring_projects_for user_id
+  def self.inspiring_projects_for(user_id)
     Project.where.not(private: true, user_id: user_id)
   end
 
@@ -29,18 +24,18 @@ class Project < ActiveRecord::Base
   end
 
   def deletefiles
-    FileUtils.rm_rf self.path
+    FileUtils.rm_rf path
   end
 
-  def imageurl imagename
-    File.join(self.satellitedir , imagename).gsub('public', '')
+  def imageurl(imagename)
+    File.join(satellitedir, imagename).gsub('public', '')
   end
 
   # Project URL
   def urlbase
     File.join("/#{user.username}",
-              self.name.gsub(" ", "%20"),
-              self.uniqueurl.to_s).gsub(/\/$/, '')
+              name.gsub(' ', '%20'),
+              uniqueurl.to_s).gsub(/\/$/, '')
   end
 
   def issues_url
@@ -48,60 +43,58 @@ class Project < ActiveRecord::Base
   end
 
   def barerepo
-    Rugged::Repository.new self.barerepopath
+    Rugged::Repository.new barerepopath
   end
 
   def satelliterepo
-    Rugged::Repository.new self.satelliterepopath
+    Rugged::Repository.new satelliterepopath
   end
 
   def barerepopath
-    File.join self.path , 'repo.git'
+    File.join path , 'repo.git'
   end
 
   def satelliterepopath
-    File.join self.path , 'satellite' , '.git'
+    File.join path , 'satellite' , '.git'
   end
 
   def satellitedir
-    File.join self.path , 'satellite'
+    File.join path , 'satellite'
   end
 
   # Push the existing contents of the satellite repo to the bare repo
   def pushtobare
     remote = satelliterepo.remotes['bare']
-    unless remote
-      remote = satelliterepo.remotes.create 'bare', barerepo.path
-    end
-    satelliterepo.push remote, ["refs/heads/master"]
+    remote = satelliterepo.remotes.create 'bare', barerepo.path unless remote
+    satelliterepo.push remote, ['refs/heads/master']
   end
 
   private
 
   def set_path
-    user = User.find self.user_id
+    user = User.find user_id
     self.path = File.join Glitter::Application.config.repo_dir,
                           'repos', user.email.to_s, name
-    logger.debug "setting path - path: #{self.path}"
-    self.save
+    logger.debug "setting path - path: #{path}"
+    save
   end
 
-  # Path : public/data/repos/user_id/project_id
-  # Bare Repository Path : public/data/repos/user_id/project_id/repo.git
-  # Satellite Repository Path : public/data/repos/user_id/project_id/satellite/.git
+  # Path: public/data/repos/user_id/project_id
+  # Bare Repo Path: public/data/repos/user_id/project_id/repo.git
+  # Satellite Repo Path: public/data/repos/user_id/project_id/satellite/.git
   def init
     logger.debug "Initing repo path: #{path}"
-    unless File.exists? self.path
-      if self.parent.nil? or self.parent == self.id
-        Rugged::Repository.init_at  self.barerepopath, :bare
-        Rugged::Repository.clone_at self.barerepopath, self.satelliterepopath
-      else # it's a fork, therefore:
-        parent = Project.find self.parent
-        Rugged::Repository.init_at self.barerepopath, :bare
-        Rugged::Repository.clone_at parent.satelliterepopath, self.satelliterepopath
-      end
-      self.pushtobare unless satelliterepo.empty?
+    return unless File.exists? path
+
+    if parent.nil? || parent == id
+      Rugged::Repository.init_at barerepopath, :bare
+      Rugged::Repository.clone_at barerepopath, satelliterepopath
+    else # it's a fork, therefore:
+      parent = Project.find parent
+      Rugged::Repository.init_at barerepopath, :bare
+      Rugged::Repository.clone_at parent.satelliterepopath, satelliterepopath
     end
+    pushtobare unless satelliterepo.empty?
   end
 
 end
